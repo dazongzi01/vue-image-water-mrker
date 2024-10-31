@@ -1,0 +1,20 @@
+# 忽略操作系统生成的文件
+.DS_Store
+Thumbs.db
+
+# 忽略 IDE 或编辑器生成的配置文件
+.idea/
+.vscode/
+
+# Node.js
+node_modules/
+npm-debug.log
+
+# 忽略操作系统生成的文件
+.DS_Store
+Thumbs.db
+
+# 忽略 IDE 或编辑器生成的配置文件
+.idea/
+.vscode/
+dist/
