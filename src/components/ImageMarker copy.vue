@@ -128,7 +128,38 @@
         link.href = canvas.toDataURL('image/png', 1.0);
         link.click();
       }
+    },
+    // 修改批量下载方法
+async batchDownload() {
+    const zip = new JSZip();
+
+    try {
+      // 等待所有图片处理完成
+      for (let i = 0; i < this.images.length; i++) {
+        await this.generateWatermark(i);
+        const canvas = this.$refs['canvas' + i][0];
+        
+        // 将canvas转换为blob
+        const blob = await new Promise(resolve => {
+          canvas.toBlob(resolve, 'image/png', 1.0);
+        });
+
+        // 添加到zip
+        zip.file(`watermarked_image_${i + 1}.png`, blob);
+      }
+
+      // 生成并下载zip
+      const content = await zip.generateAsync({type: 'blob'});
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(content);
+      link.download = 'watermarked_images.zip';
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch (error) {
+      console.error('下载过程中出现错误:', error);
+      alert('下载失败，请重试');
     }
+  }
   }
   </script>
   

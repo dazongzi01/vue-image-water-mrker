@@ -1,5 +1,6 @@
 <template>
-    <div class="image-watermark">
+  <div class="image-watermark">
+    <div class="control-panel">
       <div class="upload-area">
         <input 
           type="file" 
@@ -7,35 +8,18 @@
           accept="image/*" 
           @change="handleFileUpload" 
           :disabled="images.length >= 10"
+          ref="fileInput"
         >
-        <p>最多可上传10张图片</p>
+        <p>最多可上传10张图片，当前: {{ images.length }}/10</p>
       </div>
-      
-      <div class="image-list">
-        <div v-for="(image, index) in images" :key="index" class="image-item">
-          <canvas :ref="'canvas' + index" class="preview-canvas"></canvas>
-          
-          <div class="watermark-form">
-            <div class="logo-info">
-              <input v-model="image.name" placeholder="人名称">
-            </div>
-            <div class="watermark-grid">
-              <input v-model="image.time" placeholder="拍摄时间">
-              <textarea 
-                v-model="image.note" 
-                placeholder="备注（支持换行，最多两行）" 
-                rows="2"
-                @input="limitLines($event, image, 'note', 2)"
-              ></textarea>
-              <input v-model="image.location" placeholder="地点">
-              <!-- <input v-model="image.custom" placeholder="自定义文本"> -->
-            </div>
-            <button @click="generateWatermark(index)">预览</button>
-          </div>
-        </div>
-      </div>
-  
-      <div class="batch-actions">
+      <div class="action-buttons">
+        <button 
+          @click="clearAllImages" 
+          :disabled="!images.length"
+          class="clear-btn"
+        >
+          清空所有图片
+        </button>
         <button 
           @click="batchDownload" 
           :disabled="!images.length"
@@ -45,253 +29,469 @@
         </button>
       </div>
     </div>
-  </template>
-  
-  <script>
-  import JSZip from 'jszip'
-  
-  export default {
-    name: 'ImageWatermark',
-    data() {
-      return {
-        images: [],
-        WATERMARK_HEIGHT: 80,
+    
+    <div class="image-grid">
+      <div v-for="(image, index) in images" :key="index" class="image-item">
+        <div class="preview-section">
+          <div class="canvas-wrapper">
+            <canvas :ref="'canvas' + index" class="preview-canvas"></canvas>
+          </div>
+        </div>
+        
+        <div class="watermark-form">
+          <div class="logo-info">
+            <input 
+              v-model="image.name" 
+              placeholder="人名称"
+              @input="updateWatermark(index)"
+            >
+          </div>
+          <div class="watermark-grid">
+            <input 
+              v-model="image.time" 
+              placeholder="拍摄时间"
+              @input="updateWatermark(index)"
+            >
+            <textarea 
+              v-model="image.note" 
+              placeholder="备注（支持换行，最多两行）" 
+              rows="2"
+              @input="handleNoteInput($event, index)"
+            ></textarea>
+            <input 
+              v-model="image.location" 
+              placeholder="地点"
+              @input="updateWatermark(index)"
+            >
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+<script>
+import JSZip from 'jszip'
+
+export default {
+  name: 'ImageWatermark',
+  data() {
+    return {
+      images: [],
+      WATERMARK_CONFIG: {
+        HEIGHT_RATIO: 0.12, // 水印高度占图片高度的比例，稍微调小
+        MIN_HEIGHT: 50,     // 最小水印高度
+        MAX_HEIGHT: 100,    // 最大水印高度
         FONTS: {
-          name: 'bold 40px system-ui',
-          watermark: 'bold 20px system-ui'
+          name: {
+            style: 'bold',
+            sizeRatio: 0.45  // 相对于水印高度
+          },
+          watermark: {
+            style: 'normal', // 改为 normal
+            sizeRatio: 0.28  // 相对于水印高度，稍微调小
+          }
         },
         SPACING: {
-          watermarkTextGap: 5,    // 白色框内文字上下间距
-          nameMargin: 50,         // 人名上下间距
+          nameMargin: 40,    // 调小间距
+          padding: 15,       // 调小内边距
+          lineSpacing: 1.2   // 行间距倍数
         },
-        LOGO_CONFIG: {
-            width: 200,      // 宽度保持200px
-            height: 180,     // 高度改为180px (原80 + 100)
-            rightMargin: 20  // 右边距与人名保持一致
+        LOGO: {
+          originalWidth: 130,  // logo 原始宽度
+          originalHeight: 30,  // logo 原始高度
+          aspectRatio: 130/30, // logo 宽高比
+          maxWidthRatio: 0.15, // logo 最大宽度占图片宽度的比例
+          minWidth: 65,        // logo 最小宽度（原始尺寸的一半）
+          rightMargin: 15      // 右边距
         }
-      }
-    },
-  
-    methods: {
-      handleFileUpload(e) {
-        const files = Array.from(e.target.files);
-        if (this.images.length + files.length > 10) {
-          alert('最多只能上传10张图片');
+    }
+    }
+  },
+
+  methods: {
+    handleFileUpload(e) {
+      const files = Array.from(e.target.files);
+      
+      if (this.images.length + files.length > 10) {
+        if (confirm('已超过10张图片限制。是否清空当前图片并重新上传？')) {
+          this.clearAllImages();
+        } else {
+          this.$refs.fileInput.value = ''; // 清空input
           return;
         }
-  
-        files.forEach(file => {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            const img = new Image();
-            img.onload = () => {
-              this.images.push({
-                original: img,
-                name: '赵公子',
-                time: '拍 摄 时 间：',
-                location: '地           点：',
-                note: '备           注：',
-                custom: '',
-              });
+      }
+
+      files.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const imageData = {
+              original: img,
+              name: '赵公子',
+              time: '拍摄时间：',
+              location: '地点：',
+              note: '备注：',
+              width: img.width,
+              height: img.height,
+              aspectRatio: img.width / img.height,
+              isLandscape: img.width > img.height
             };
-            img.src = e.target.result;
+            this.images.push(imageData);
+            // 自动生成水印
+            this.$nextTick(() => {
+              const index = this.images.length - 1;
+              this.generateWatermark(index);
+            });
           };
-          reader.readAsDataURL(file);
-        });
-      },
-  
-      limitLines(event, image, field, maxLines) {
-        const lines = event.target.value.split('\n');
-        if (lines.length > maxLines) {
-          image[field] = lines.slice(0, maxLines).join('\n');
-        }
-      },
-  
-      generateWatermark(index) {
-    return new Promise((resolve) => {
-      const image = this.images[index];
-      const canvas = this.$refs['canvas' + index][0];
-      const ctx = canvas.getContext('2d');
-
-      // 设置画布尺寸
-      canvas.width = image.original.width;
-      canvas.height = image.original.height;
-
-      // 绘制原图
-      ctx.drawImage(image.original, 0, 0);
-
-      // 绘制底部白色水印区域
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, image.original.height - this.WATERMARK_HEIGHT, image.original.width, this.WATERMARK_HEIGHT);
-
-      // 设置水印区域内的文字样式
-      ctx.fillStyle = '#000000';
-      ctx.font = this.FONTS.watermark;
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-
-      // 计算文字位置
-      const halfWidth = image.original.width / 2;
-      const padding = 20;
-      
-      // 计算上下行的y坐标
-      const watermarkTop = image.original.height - this.WATERMARK_HEIGHT;
-      const firstLineY = watermarkTop + 20;
-      const secondLineY = watermarkTop + this.WATERMARK_HEIGHT - 20;
-
-      // 绘制第一行文字（时间和备注）
-      ctx.fillText(image.time, padding, firstLineY);
-      
-      // 处理备注的换行
-      const noteLines = image.note.split('\n').slice(0, 2);
-      noteLines.forEach((line, i) => {
-        ctx.fillText(
-          line,
-          halfWidth + padding,
-          firstLineY + (i * 20)
-        );
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
       });
+      
+      // 清空input，允许重复上传相同文件
+      this.$refs.fileInput.value = '';
+    },
 
-      // 绘制第二行文字（地点和自定义文本）
-      ctx.fillText(image.location, padding, secondLineY);
-      ctx.fillText(image.custom, halfWidth + padding, secondLineY);
+    clearAllImages() {
+      this.images = [];
+    },
 
-       // 加载并绘制固定的logo图片
-       const logo = new Image();
-        logo.onload = () => {
-          // 计算logo位置，右边与人名对齐
-          const rightEdge = image.original.width - this.LOGO_CONFIG.rightMargin;
-          const logoX = rightEdge - this.LOGO_CONFIG.width;
-          const logoY = image.original.height - this.WATERMARK_HEIGHT - this.SPACING.nameMargin - this.LOGO_CONFIG.height;
+    handleNoteInput(event, index) {
+      const lines = event.target.value.split('\n');
+      if (lines.length > 2) {
+        this.images[index].note = lines.slice(0, 2).join('\n');
+      }
+      this.updateWatermark(index);
+    },
+
+    updateWatermark(index) {
+      // 使用防抖优化性能
+      if (this.updateTimeout) {
+        clearTimeout(this.updateTimeout);
+      }
+      this.updateTimeout = setTimeout(() => {
+        this.generateWatermark(index);
+      }, 300);
+    },
+    calculateWatermarkDimensions(imageWidth, imageHeight) {
+      const config = this.WATERMARK_CONFIG;
+      
+      // 计算水印高度
+      let watermarkHeight = Math.round(imageHeight * config.HEIGHT_RATIO);
+      watermarkHeight = Math.max(config.MIN_HEIGHT, Math.min(config.MAX_HEIGHT, watermarkHeight));
+
+      // 计算字体大小
+      const nameFontSize = Math.round(watermarkHeight * config.FONTS.name.sizeRatio);
+      const watermarkFontSize = Math.round(watermarkHeight * config.FONTS.watermark.sizeRatio);
+
+      // 计算 logo 尺寸（保持原始比例）
+      let logoWidth = Math.round(imageWidth * config.LOGO.maxWidthRatio);
+      logoWidth = Math.max(config.LOGO.minWidth, logoWidth);
+      const logoHeight = Math.round(logoWidth / config.LOGO.aspectRatio);
+
+      return {
+        watermarkHeight,
+        nameFontSize,
+        watermarkFontSize,
+        logoWidth,
+        logoHeight
+      };
+    },
+    generateWatermark(index, targetCanvas = null, isDownload = false) {
+      return new Promise((resolve) => {
+        const image = this.images[index];
+        const canvas = targetCanvas || this.$refs['canvas' + index][0];
+        const ctx = canvas.getContext('2d');
+
+        // 计算预览尺寸
+        let finalWidth, finalHeight, scale;
+        if (isDownload) {
+          finalWidth = image.width;
+          finalHeight = image.height;
+          scale = 1;
+        } else {
+          const maxPreviewWidth = canvas.parentElement.offsetWidth;
+          const maxPreviewHeight = 220; // 稍微调小预览高度
+
+          // 计算下载时的完整尺寸
+          const downloadDimensions = this.calculateWatermarkDimensions(image.width, image.height);
+          const totalOriginalHeight = image.height + downloadDimensions.watermarkHeight;
           
-          // 使用固定大小绘制logo
-          ctx.drawImage(
-            logo, 
-            logoX, 
-            logoY, 
-            this.LOGO_CONFIG.width, 
-            this.LOGO_CONFIG.height
+          // 计算缩放比例
+          const widthScale = maxPreviewWidth / image.width;
+          const heightScale = maxPreviewHeight / totalOriginalHeight;
+          scale = Math.min(widthScale, heightScale) * 0.85; // 调整为85%
+          
+          finalWidth = Math.round(image.width * scale);
+          finalHeight = Math.round(image.height * scale);
+        }
+
+        // 计算水印尺寸
+        const dimensions = this.calculateWatermarkDimensions(
+          isDownload ? finalWidth : image.width,
+          isDownload ? finalHeight : image.height
+        );
+
+        // 缩放所有尺寸
+        let {
+          watermarkHeight,
+          nameFontSize,
+          watermarkFontSize,
+          logoWidth,
+          logoHeight
+        } = dimensions;
+
+        if (!isDownload) {
+          watermarkHeight = Math.round(watermarkHeight * scale);
+          nameFontSize = Math.round(nameFontSize * scale);
+          watermarkFontSize = Math.round(watermarkFontSize * scale);
+          logoWidth = Math.round(logoWidth * scale);
+          logoHeight = Math.round(logoHeight * scale);
+        }
+
+        // 设置画布尺寸
+        canvas.width = finalWidth;
+        canvas.height = finalHeight + watermarkHeight;
+
+        // 绘制背景和原图
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(image.original, 0, 0, finalWidth, finalHeight);
+
+        // 绘制水印背景
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, finalHeight, finalWidth, watermarkHeight);
+
+        // 设置水印文字样式
+        ctx.fillStyle = '#000000';
+        ctx.font = `${this.WATERMARK_CONFIG.FONTS.watermark.style} ${watermarkFontSize}px system-ui`;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+
+        // 计算文字位置
+        const padding = Math.round(this.WATERMARK_CONFIG.SPACING.padding * scale);
+        const lineHeight = Math.round(watermarkHeight / 2.5); // 调整行高
+        const firstLineY = finalHeight + lineHeight;
+        const secondLineY = firstLineY + (lineHeight * this.WATERMARK_CONFIG.SPACING.lineSpacing);
+
+        // 绘制水印文字
+        ctx.fillText(image.time, padding, firstLineY);
+        ctx.fillText(image.location, finalWidth / 2 + padding, firstLineY);
+
+        // 绘制备注（最多两行）
+        const noteLines = image.note.split('\n');
+        noteLines.forEach((line, i) => {
+          if (i < 2) {
+            ctx.fillText(
+              line, 
+              padding, 
+              secondLineY + (i * watermarkFontSize * this.WATERMARK_CONFIG.SPACING.lineSpacing)
+            );
+          }
+        });
+
+        // 加载并绘制logo
+        const logo = new Image();
+        logo.onload = () => {
+          const logoX = finalWidth - logoWidth - Math.round(this.WATERMARK_CONFIG.LOGO.rightMargin * scale);
+          const logoY = finalHeight - logoHeight - Math.round(this.WATERMARK_CONFIG.SPACING.nameMargin * scale) - 30;
+          
+          ctx.drawImage(logo, logoX, logoY, logoWidth, logoHeight);
+          
+          // 绘制人名
+          ctx.fillStyle = '#FFFFFF';
+          ctx.font = `${this.WATERMARK_CONFIG.FONTS.name.style} ${nameFontSize}px system-ui`;
+          ctx.textAlign = 'right';
+          const nameY = finalHeight - Math.round(this.WATERMARK_CONFIG.SPACING.nameMargin * scale);
+          ctx.fillText(
+            image.name, 
+            finalWidth - Math.round(this.WATERMARK_CONFIG.LOGO.rightMargin * scale), 
+            nameY
           );
           
-          // 绘制人名（白色文字）
-          ctx.fillStyle = '#FFFFFF';
-          ctx.font = this.FONTS.name;
-          ctx.textAlign = 'right';
-          const nameY = image.original.height - this.WATERMARK_HEIGHT - this.SPACING.nameMargin;
-          ctx.fillText(image.name, rightEdge, nameY); // 使用相同的rightEdge确保对齐
-          
-          resolve();
+          resolve(canvas);
         };
         logo.src = require('@/assets/logo.png');
       });
-    },
-
-// 修改批量下载方法
-async batchDownload() {
-    const zip = new JSZip();
-
-    try {
-      // 等待所有图片处理完成
-      for (let i = 0; i < this.images.length; i++) {
-        await this.generateWatermark(i);
-        const canvas = this.$refs['canvas' + i][0];
+  },
+    async batchDownload() {
+      const zip = new JSZip();
+      
+      try {
+        // 显示加载提示
+        this.$message ? this.$message.loading('正在处理图片...') : alert('正在处理图片...');
         
-        // 将canvas转换为blob
-        const blob = await new Promise(resolve => {
-          canvas.toBlob(resolve, 'image/png', 1.0);
+        for (let i = 0; i < this.images.length; i++) {
+          const tempCanvas = document.createElement('canvas');
+          await this.generateWatermark(i, tempCanvas, true);
+          
+          const blob = await new Promise(resolve => {
+            tempCanvas.toBlob(resolve, 'image/jpeg', 0.92);
+          });
+          
+          zip.file(`watermarked_image_${i + 1}.jpg`, blob);
+        }
+        
+        const content = await zip.generateAsync({
+          type: 'blob',
+          compression: 'DEFLATE',
+          compressionOptions: {
+            level: 6
+          }
         });
-
-        // 添加到zip
-        zip.file(`watermarked_image_${i + 1}.png`, blob);
+        
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(content);
+        link.download = `watermarked_images_${new Date().getTime()}.zip`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+        
+        // 显示成功提示
+        this.$message ? this.$message.success('下载成功！') : alert('下载成功！');
+      } catch (error) {
+        console.error('下载过程中出现错误:', error);
+        this.$message ? this.$message.error('下载失败，请重试') : alert('下载失败，请重试');
       }
-
-      // 生成并下载zip
-      const content = await zip.generateAsync({type: 'blob'});
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(content);
-      link.download = 'watermarked_images.zip';
-      link.click();
-      URL.revokeObjectURL(link.href);
-    } catch (error) {
-      console.error('下载过程中出现错误:', error);
-      alert('下载失败，请重试');
     }
-  }
   }
 }
 </script>
-
 <style scoped>
 .image-watermark {
   padding: 20px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.control-panel {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 15px;
+  background: #f5f5f5;
+  border-radius: 8px;
 }
 
 .upload-area {
-  margin-bottom: 20px;
+  flex: 1;
 }
 
-.image-list {
+.action-buttons {
   display: flex;
-  flex-direction: column;
-  gap: 30px;
+  gap: 10px;
+}
+
+.image-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr); /* 3列布局 */
+  gap: 20px;
+  margin-bottom: 30px;
 }
 
 .image-item {
-    border: 1px solid #eee;
-padding: 15px;
-border-radius: 8px;
+  border: 1px solid #eee;
+  padding: 15px;
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
+
+.preview-section {
+  width: 100%;
+  margin-bottom: 15px;
+}
+
+.canvas-wrapper {
+  width: 100%;
+  min-height: 250px; /* 最小高度 */
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f5f5;
+  border-radius: 4px;
+}
+
 .preview-canvas {
-max-width: 100%;
-height: auto;
-margin-bottom: 15px;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
+
 .watermark-form {
-margin-top: 15px;
+  padding: 10px;
 }
+
 .logo-info {
-display: flex;
-gap: 10px;
-margin-bottom: 10px;
+  margin-bottom: 10px;
 }
+
 .watermark-grid {
-display: grid;
-grid-template-columns: 1fr 1fr;
-gap: 10px;
-margin: 10px 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin: 10px 0;
 }
+
 input, textarea {
-padding: 8px;
-border: 1px solid #ddd;
-border-radius: 4px;
-width: 100%;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  width: 100%;
+  font-size: 14px;
 }
+
 textarea {
-resize: none;
-height: 60px;
+  resize: none;
+  height: 60px;
 }
+
 button {
-padding: 8px 16px;
-background-color: #4CAF50;
-color: white;
-border: none;
-border-radius: 4px;
-cursor: pointer;
-margin-right: 10px;
+  padding: 8px 16px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
 }
+
+.clear-btn {
+  background-color: #f44336;
+}
+
 button:disabled {
-background-color: #cccccc;
-cursor: not-allowed;
+  background-color: #cccccc;
+  cursor: not-allowed;
 }
+
 button:hover:not(:disabled) {
-background-color: #45a049;
+  opacity: 0.9;
 }
-.batch-actions {
-margin-top: 30px;
-text-align: center;
+
+/* 响应式布局 */
+@media (max-width: 1200px) {
+  .image-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
-.download-btn {
-font-size: 16px;
-padding: 10px 24px;
+
+@media (max-width: 768px) {
+  .image-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .control-panel {
+    flex-direction: column;
+    gap: 15px;
+  }
+  
+  .action-buttons {
+    width: 100%;
+    justify-content: center;
+  }
 }
 </style>
