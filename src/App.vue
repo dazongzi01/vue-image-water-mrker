@@ -1,6 +1,6 @@
 <template>
   <div id="app">
-    <h1>赵总的专属应用：输入手机号才能正常使用哦！</h1>
+    <h1 v-if="!isOk">赵总的专属应用：输入手机号才能正常使用哦！</h1>
     <PhoneVerification v-if="!isOk" @phone-verified="onPhoneVerified"/>
     <!-- <img alt="Vue logo" src="./assets/logo.png">
     <HelloWorld msg="Welcome to Your Vue.js App"/> -->
@@ -29,7 +29,7 @@ export default {
     onPhoneVerified(phoneNumber) {
       console.log('验证通过的手机号：', phoneNumber);
       // 这里添加您的后续处理逻辑
-      if('18135773868' == phoneNumber){
+      if('13439504888' == phoneNumber){
         this.isOk = true;
       }else{
         alert('暗号不对')

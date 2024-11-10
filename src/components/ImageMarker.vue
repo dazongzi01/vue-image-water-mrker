@@ -84,12 +84,13 @@ export default {
         FONTS: {
           name: {
             style: 'bold',
-            sizeRatio: 0.45  // 相对于水印高度
+            sizeRatio: 0.28  // 修改为与其他文字相同的比例
           },
           watermark: {
-            style: 'normal', // 改为 normal
-            sizeRatio: 0.28  // 相对于水印高度，稍微调小
-          }
+            style: 'normal',
+            sizeRatio: 0.28
+          },
+          family: '"PingFang SC", "SF Pro SC", sans-serif' // 添加字体设置
         },
         SPACING: {
           nameMargin: 40,    // 调小间距
@@ -130,8 +131,8 @@ export default {
               original: img,
               name: '赵公子',
               time: '拍摄时间：',
-              location: '地点：',
-              note: '备注：',
+              location: '地    点：',
+              note: '备    注：',
               width: img.width,
               height: img.height,
               aspectRatio: img.width / img.height,
@@ -265,23 +266,25 @@ export default {
 
         // 设置水印文字样式
         ctx.fillStyle = '#000000';
-        ctx.font = `${this.WATERMARK_CONFIG.FONTS.watermark.style} ${watermarkFontSize}px system-ui`;
+        ctx.font = `${this.WATERMARK_CONFIG.FONTS.watermark.style} ${watermarkFontSize}px ${this.WATERMARK_CONFIG.FONTS.family}`;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
 
         // 计算文字位置
         const padding = Math.round(this.WATERMARK_CONFIG.SPACING.padding * scale);
-        const lineHeight = Math.round(watermarkHeight / 2.5); // 调整行高
-        const firstLineY = finalHeight + lineHeight;
+        const lineHeight = Math.round(watermarkHeight / 2.5); // 保持行高计算
+        
+        // 在原来的基础上减少10像素（向上移动）
+        const firstLineY = finalHeight + lineHeight - 10;
         const secondLineY = firstLineY + (lineHeight * this.WATERMARK_CONFIG.SPACING.lineSpacing);
 
         // 绘制水印文字
         ctx.fillText(image.time, padding, firstLineY);
-        ctx.fillText(image.location, finalWidth / 2 + padding, firstLineY);
+        ctx.fillText(image.note, finalWidth / 2 + padding, firstLineY);
 
-        // 绘制备注（最多两行）
-        const noteLines = image.note.split('\n');
-        noteLines.forEach((line, i) => {
+        // 绘制地点（最多两行）
+        const locationLines = image.location.split('\n');
+        locationLines.forEach((line, i) => {
           if (i < 2) {
             ctx.fillText(
               line, 
@@ -299,9 +302,9 @@ export default {
           
           ctx.drawImage(logo, logoX, logoY, logoWidth, logoHeight);
           
-          // 绘制人名
+           // 绘制人名时使用相同的字体设置
+          ctx.font = `${this.WATERMARK_CONFIG.FONTS.name.style} ${watermarkFontSize}px ${this.WATERMARK_CONFIG.FONTS.family}`;
           ctx.fillStyle = '#FFFFFF';
-          ctx.font = `${this.WATERMARK_CONFIG.FONTS.name.style} ${nameFontSize}px system-ui`;
           ctx.textAlign = 'right';
           const nameY = finalHeight - Math.round(this.WATERMARK_CONFIG.SPACING.nameMargin * scale);
           ctx.fillText(
@@ -309,7 +312,6 @@ export default {
             finalWidth - Math.round(this.WATERMARK_CONFIG.LOGO.rightMargin * scale), 
             nameY
           );
-          
           resolve(canvas);
         };
         logo.src = require('@/assets/logo.png');
@@ -358,6 +360,19 @@ export default {
 }
 </script>
 <style scoped>
+/* @font-face {
+  font-family: 'PingFang SC';
+  src: url('../assets/fonts/PingFang-SC-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'PingFang SC';
+  src: url('../assets/fonts/PingFang-SC-Bold.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+} */
 .image-watermark {
   padding: 20px;
   max-width: 1400px;
