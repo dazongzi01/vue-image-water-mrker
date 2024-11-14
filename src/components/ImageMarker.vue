@@ -131,7 +131,7 @@ export default {
               original: img,
               name: '赵公子',
               time: '拍摄时间：',
-              location: '地      点：',
+              location: '地       点：',
               note: '备        注：',
               width: img.width,
               height: img.height,

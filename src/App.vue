@@ -29,7 +29,7 @@ export default {
     onPhoneVerified(phoneNumber) {
       console.log('验证通过的手机号：', phoneNumber);
       // 这里添加您的后续处理逻辑
-      if('13439504888' == phoneNumber){
+      if('13439504888' == phoneNumber || '18292417675' == phoneNumber){
         this.isOk = true;
       }else{
         alert('暗号不对')
